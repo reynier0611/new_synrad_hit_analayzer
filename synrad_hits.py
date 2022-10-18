@@ -109,6 +109,8 @@ class hits_from_synrad:
 
     # --------------------------------------------
     def load_hits(self,facet,idx):
+        # We need to speed up this function. The code takes 91% of the time here.
+        # We may want to try loading all these dataframes earlier in the code and keep them in memory, if they fit.
         rnum = np.random.randint(1,self.number_seeded_geant_files)
         fname = os.path.join(self.path_to_hits,'geant_out_{}_seed_{}.edm4hep.root'.format(facet,rnum))
         F = uproot.open(fname)
@@ -149,7 +151,7 @@ if __name__ == '__main__':
     print('Creating an instance of hits_from_synrad')
     path_to_photons = './'
     path_to_hits = 'geant_data/'
-    nevents = 100
+    nevents = 5
     hits = hits_from_synrad(nevents,100.e-09,path_to_photons,path_to_hits) # argument is integration window in sec
     hits.generate()
     print('Overall running time:',np.round((time.time()-t0)/60.,2),'min')
