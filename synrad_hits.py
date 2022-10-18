@@ -23,6 +23,9 @@ class hits_from_synrad:
         self.path_to_hits = path_to_hits
 
         self.number_seeded_geant_files = 25
+        self.facets = ['25098','25113','25119','25099','25114','25120','25100',
+        '25115','25130','25101','25116','25131','25111','25117','25132','25112',
+        '25118','25133']
 
         print('')
         print('requested number of events:',self.nevents)
@@ -35,13 +38,19 @@ class hits_from_synrad:
         self.df_photons.columns = ['facet','subidx','NormFact']
         print(self.df_photons.info())
         print(self.df_photons.describe())
+        print('')
 
         n_entries = len(self.df_photons)
         self.h1_df = ROOT.TH1D('h1_df',';entry;W [#gamma/sec]',n_entries,0,n_entries)
         for i in range(n_entries):
             self.h1_df.SetBinContent(i+1,self.df_photons['NormFact'].iloc[i])
 
-        self.detectors = ["VertexBarrelHits","SiBarrelHits","TaggerTracker1Hits"]
+        self.detectors =["VertexBarrelHits","SiBarrelHits","TaggerTracker1Hits"]
+        self.detectors = ["DRICHHits","EcalEndcapNHits","EcalEndcapPHits","VertexBarrelHits","SiBarrelHits","MPGDBarrelHits",
+        "TrackerEndcapHits","MRICHHits","ZDC_PbSi_Hits","ZDC_WSi_Hits","ZDCHcalHits","TaggerTracker1Hits",
+        "ForwardRomanPotHits","EcalBarrelHits","HcalEndcapPHits","HcalEndcapNHits","HcalEndcapPInsertHits",
+        "HcalBarrelHits","B0PreshowerHits","B0TrackerHits","ForwardOffMTrackerHits","ZDC_SiliconPix_Hits",
+        "ZDCEcalHits","TaggerCalorimeter1Hits","TaggerTracker2Hits","TaggerCalorimeter2Hits"]
 
         self.hits = {}
         for detector in self.detectors:
@@ -49,13 +58,9 @@ class hits_from_synrad:
             for var in ['x','y','z']:
                 self.hits[detector][var] = []
 
-        '''
-        "DRICHHits","EcalEndcapNHits","EcalEndcapPHits","VertexBarrelHits","SiBarrelHits","MPGDBarrelHits"
-        "TrackerEndcapHits","MRICHHits","ZDC_PbSi_Hits","ZDC_WSi_Hits","ZDCHcalHits","TaggerTracker1Hits",
-        "ForwardRomanPotHits","EcalBarrelHits","HcalEndcapPHits","HcalEndcapNHits","HcalEndcapPInsertHits",
-        "HcalBarrelHits","B0PreshowerHits","B0TrackerHits","ForwardOffMTrackerHits","ZDC_SiliconPix_Hits",
-        "ZDCEcalHits","TaggerCalorimeter1Hits","TaggerTracker2Hits","TaggerCalorimeter2Hits"
-        '''
+        self.load_hits()
+
+        print('>>>',self.hit_container['25111'][5]['VertexBarrelHits'])
 
     # --------------------------------------------
     def generate_an_event(self):
@@ -84,6 +89,7 @@ class hits_from_synrad:
     # --------------------------------------------
     def generate(self):
         multiplicity = []
+        print('')
 
         # Loop over and generate events the user requested
         for i in range(self.nevents):
@@ -94,7 +100,7 @@ class hits_from_synrad:
             multiplicity.append(len(event))
             
             for photon in event:
-                self.load_hits(photon[0],photon[1])
+                self.locate_hits((str)(photon[0]),photon[1])
 
         # -----------------
         # Multiplicity plot
@@ -108,23 +114,48 @@ class hits_from_synrad:
             self.plot_x_y_z_distributions(detector)
 
     # --------------------------------------------
-    def load_hits(self,facet,idx):
-        # We need to speed up this function. The code takes 91% of the time here.
-        # We may want to try loading all these dataframes earlier in the code and keep them in memory, if they fit.
-        rnum = np.random.randint(1,self.number_seeded_geant_files)
-        fname = os.path.join(self.path_to_hits,'geant_out_{}_seed_{}.edm4hep.root'.format(facet,rnum))
-        F = uproot.open(fname)
+    def load_hits(self):
+        self.hit_container = {}
+        for facet in self.facets:
+            self.hit_container[facet] = {}
+            for seed in range(1,self.number_seeded_geant_files):
+                self.hit_container[facet][seed] = {}
+
+                fname = os.path.join(self.path_to_hits,'geant_out_{}_seed_{}.edm4hep.root'.format(facet,seed))
+                F = uproot.open(fname)
+
+                for detector in self.detectors:
+                    self.hit_container[facet][seed][detector] = {}
+                    try:
+                        subdf_x = F['events/'+detector+'.position.x'].array(library="pd")
+                        subdf_y = F['events/'+detector+'.position.y'].array(library="pd")
+                        subdf_z = F['events/'+detector+'.position.z'].array(library="pd")
+
+                        idxs = []
+                        for i in range(len(subdf_x.index)):
+                            if i == 0:
+                                idxs.append(subdf_x.index[i][0])
+                            elif subdf_x.index[i][0] != subdf_x.index[i-1][0]:
+                                idxs.append(subdf_x.index[i][0])
+
+                        for idx in idxs:
+                            self.hit_container[facet][seed][detector][idx] = []
+                            for sh in range(len(subdf_x[idx])):
+                                self.hit_container[facet][seed][detector][idx].append([sh,subdf_x[idx][sh],subdf_y[idx][sh],subdf_z[idx][sh]])
+                    except:
+                        pass
+
+    # --------------------------------------------
+    def locate_hits(self,facet,idx):
+        seed = np.random.randint(1,self.number_seeded_geant_files)
 
         for detector in self.detectors:
             try:
-                x = F['events/'+detector+'.position.x'].array(library="pd")[idx]
-                y = F['events/'+detector+'.position.y'].array(library="pd")[idx]
-                z = F['events/'+detector+'.position.z'].array(library="pd")[idx]
-
-                for i in range(len(x)):
-                    self.hits[detector]['x'].append(x.iloc[i])
-                    self.hits[detector]['y'].append(y.iloc[i])
-                    self.hits[detector]['z'].append(z.iloc[i])
+                elm = self.hit_container[facet][seed][detector][idx]
+                for i in range(len(elm)):
+                    self.hits[detector]['x'].append(elm[i][1])
+                    self.hits[detector]['y'].append(elm[i][2])
+                    self.hits[detector]['z'].append(elm[i][3])
 
             except:
                 pass
@@ -151,7 +182,7 @@ if __name__ == '__main__':
     print('Creating an instance of hits_from_synrad')
     path_to_photons = './'
     path_to_hits = 'geant_data/'
-    nevents = 5
+    nevents = 1000
     hits = hits_from_synrad(nevents,100.e-09,path_to_photons,path_to_hits) # argument is integration window in sec
     hits.generate()
     print('Overall running time:',np.round((time.time()-t0)/60.,2),'min')
