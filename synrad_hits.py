@@ -44,12 +44,13 @@ class hits_from_synrad:
         for i in range(n_entries):
             self.h1_df.SetBinContent(i+1,self.df_photons['NormFact'].iloc[i])
 
-        self.detectors =["VertexBarrelHits","SiBarrelHits","TaggerTracker1Hits"]
         self.detectors = ["DRICHHits","EcalEndcapNHits","EcalEndcapPHits","VertexBarrelHits","SiBarrelHits","MPGDBarrelHits",
         "TrackerEndcapHits","MRICHHits","ZDC_PbSi_Hits","ZDC_WSi_Hits","ZDCHcalHits","TaggerTracker1Hits",
         "ForwardRomanPotHits","EcalBarrelHits","HcalEndcapPHits","HcalEndcapNHits","HcalEndcapPInsertHits",
         "HcalBarrelHits","B0PreshowerHits","B0TrackerHits","ForwardOffMTrackerHits","ZDC_SiliconPix_Hits",
         "ZDCEcalHits","TaggerCalorimeter1Hits","TaggerTracker2Hits","TaggerCalorimeter2Hits"]
+
+        self.detectors = ["VertexBarrelHits","SiBarrelHits","TaggerTracker1Hits"]
 
         self.hits = {}
         for detector in self.detectors:
@@ -94,7 +95,7 @@ class hits_from_synrad:
 
         # Loop over and generate events the user requested
         for i in range(self.nevents):
-            if i%100==0:
+            if i%1000==0:
                 print('Event',i,'out of',self.nevents)
 
             event = self.generate_an_event()
@@ -186,12 +187,36 @@ class hits_from_synrad:
         fig = plt.figure(figsize=(10,5))
         plt.subplot(1,2,1)
         plt.scatter(x,y)
+        plt.title(detector+' integration window = {} sec'.format(self.int_window))
+        plt.xlabel('$x$ [mm]')
+        plt.ylabel('$y$ [mm]')
+
+        circles = self.circles(detector)
+
         plt.subplot(1,2,2)
         plt.scatter(z,x)
+        plt.xlabel('$z$ [mm]')
+        plt.ylabel('$x$ [mm]')
 
+        plt.tight_layout()
         plt.savefig('output_plots/results_xyz_hits_'+detector+'.png',dpi=600)
-        del fig
         plt.close()
+
+    # --------------------------------------------
+    def circles(self,detector):
+        if detector == 'VertexBarrelHits':
+            c1_x, c1_y = self.circle(36.); self.draw_circle(c1_x,c1_y)
+            c2_x, c2_y = self.circle(48.); self.draw_circle(c2_x,c2_y)
+            c3_x, c3_y = self.circle(120); self.draw_circle(c3_x,c3_y)
+            
+    # --------------------------------------------
+    def circle(self,radius):
+        phi = np.linspace(0,2.*np.pi,100)
+        return radius*np.cos(phi), radius*np.sin(phi)
+
+    # --------------------------------------------
+    def draw_circle(self,x,y):
+        plt.plot(x,y,color='black',linestyle='--',alpha=0.3)
 
 # ------------------------------------------------------------------------------------------------
 # Main function
@@ -206,13 +231,16 @@ if __name__ == '__main__':
     parser.add_argument('--analyze', 
                         help='load hits from dictionary and analyze', 
                         action='store_true', default=False)
+    parser.add_argument('--nevents', action='store', type=int, default=0,
+                        help='number of events')
+    parser.add_argument('--int_window', action='store', type=float, default=100.e-09,
+                        help='time integration window in seconds. Default = 100.e-09')
     args = parser.parse_args()
 
     print('Creating an instance of hits_from_synrad')
     path_to_photons = './'
     path_to_hits = 'geant_data/'
-    nevents = 1000
-    hits = hits_from_synrad(nevents,100.e-09,path_to_photons,path_to_hits,args.process_g4_hits) # argument is integration window in sec
+    hits = hits_from_synrad(args.nevents,args.int_window,path_to_photons,path_to_hits,args.process_g4_hits)
     if args.analyze:
         hits.generate()
 
