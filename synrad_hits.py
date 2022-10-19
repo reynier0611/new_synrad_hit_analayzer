@@ -1,5 +1,6 @@
 # author: Rey Cruz Torres
 
+from xml.etree.ElementTree import C14NWriterTarget
 import pandas as pd
 import os
 import ROOT
@@ -19,21 +20,24 @@ class hits_from_synrad:
             print("need both 'path_to_photons' and 'path_to_hits' arguments")
             exit()
 
-        self.nevents = nevents
-        self.int_window = int_window
-        self.path_to_photons = path_to_photons
-        self.path_to_hits = path_to_hits
-
+        # -----------------
+        # Some parameters that may need modification down the line
         self.number_seeded_geant_files = 25
         self.facets = ['25098','25113','25119','25099','25114','25120','25100',
         '25115','25130','25101','25116','25131','25111','25117','25132','25112',
         '25118','25133']
+        # -----------------
+
+        self.nevents = nevents
+        self.int_window = int_window
+        self.path_to_photons = path_to_photons
+        self.path_to_hits = path_to_hits
+        self.dict_hdf5_fname = 'preprocessed_G4_hits_seeds_{}.h5'.format(self.number_seeded_geant_files)
 
         print('')
         print('requested number of events:',self.nevents)
-        print('time integration window:',self.int_window)
+        print('time integration window:',self.int_window,'sec')
         print('path to synrad photons:',self.path_to_photons)
-        print('path to geant hits:',self.path_to_hits)
         print('')
 
         self.df_photons = pd.read_csv(os.path.join(self.path_to_photons,'normalization_file.txt'))
@@ -59,9 +63,10 @@ class hits_from_synrad:
                 self.hits[detector][var] = []
 
         if preprocess_g4_hits:
+            print('Will look for geant files in:',self.path_to_hits)
             self.preprocess_hits()
         else:
-            self.load_hits()
+            self.hit_container = h5todict(self.dict_hdf5_fname)
 
     # --------------------------------------------
     def generate_an_event(self):
@@ -90,7 +95,6 @@ class hits_from_synrad:
     # --------------------------------------------
     def generate(self):
         multiplicity = []
-
         print('Beginning loop over events')
 
         # Loop over and generate events the user requested
@@ -104,6 +108,8 @@ class hits_from_synrad:
             for photon in event:
                 self.locate_hits((str)(photon[0]),photon[1])
 
+        print('')
+        print('Making plots')
         # -----------------
         # Multiplicity plot
         plt.figure(figsize=(10,8))
@@ -147,17 +153,8 @@ class hits_from_synrad:
                     except:
                         pass
 
-        filename = 'preprocessed_G4_hits_seeds_{}.h5'.format(self.number_seeded_geant_files)
-        print(f'Writing results to {filename}')
-        dicttoh5(self.hit_container,filename, overwrite_data=True)
-
-    # --------------------------------------------
-    def load_hits(self):
-        '''
-        Load preprocessed dictionary with Geant hits including seed information.
-        '''
-        filename = 'preprocessed_G4_hits_seeds_{}.h5'.format(self.number_seeded_geant_files)
-        self.hit_container = h5todict(filename)
+        print(f'Writing results to {self.dict_hdf5_fname}')
+        dicttoh5(self.hit_container,self.dict_hdf5_fname, overwrite_data=True)
 
     # --------------------------------------------
     def locate_hits(self,facet,idx):
@@ -191,12 +188,14 @@ class hits_from_synrad:
         plt.xlabel('$x$ [mm]')
         plt.ylabel('$y$ [mm]')
 
-        circles = self.circles(detector)
+        self.circles(detector)
 
         plt.subplot(1,2,2)
         plt.scatter(z,x)
         plt.xlabel('$z$ [mm]')
         plt.ylabel('$x$ [mm]')
+
+        self.lines(detector)
 
         plt.tight_layout()
         plt.savefig('output_plots/results_xyz_hits_'+detector+'.png',dpi=600)
@@ -208,6 +207,11 @@ class hits_from_synrad:
             c1_x, c1_y = self.circle(36.); self.draw_circle(c1_x,c1_y)
             c2_x, c2_y = self.circle(48.); self.draw_circle(c2_x,c2_y)
             c3_x, c3_y = self.circle(120); self.draw_circle(c3_x,c3_y)
+        elif detector == 'SiBarrelHits':
+            c1_x, c1_y = self.circle(239);  self.draw_circle(c1_x,c1_y)
+            c2_x, c2_y = self.circle(430);  self.draw_circle(c2_x,c2_y)
+            c3_x, c3_y = self.circle(270);  self.draw_circle(c3_x,c3_y)
+            c4_x, c4_y = self.circle(420);  self.draw_circle(c4_x,c4_y)
             
     # --------------------------------------------
     def circle(self,radius):
@@ -217,6 +221,16 @@ class hits_from_synrad:
     # --------------------------------------------
     def draw_circle(self,x,y):
         plt.plot(x,y,color='black',linestyle='--',alpha=0.3)
+
+    # --------------------------------------------
+    def lines(self,detector):
+        if detector == 'VertexBarrelHits':
+            plt.plot([-135,135],[36,36],color='black',linestyle='--',alpha=0.3)
+            plt.plot([-135,135],[48,48],color='black',linestyle='--',alpha=0.3)
+            plt.plot([-135,135],[120,120],color='black',linestyle='--',alpha=0.3)
+            plt.plot([-135,135],[-36,-36],color='black',linestyle='--',alpha=0.3)
+            plt.plot([-135,135],[-48,-48],color='black',linestyle='--',alpha=0.3)
+            plt.plot([-135,135],[-120,-120],color='black',linestyle='--',alpha=0.3)
 
 # ------------------------------------------------------------------------------------------------
 # Main function
@@ -237,7 +251,9 @@ if __name__ == '__main__':
                         help='time integration window in seconds. Default = 100.e-09')
     args = parser.parse_args()
 
+    print('******************************************************')
     print('Creating an instance of hits_from_synrad')
+    print('******************************************************')
     path_to_photons = './'
     path_to_hits = 'geant_data/'
     hits = hits_from_synrad(args.nevents,args.int_window,path_to_photons,path_to_hits,args.process_g4_hits)
