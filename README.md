@@ -1,5 +1,5 @@
 ## Using this code.
-### author; Rey Cruz-Torres
+#### author: Rey Cruz-Torres
 
 The first time the code is run, the flag ```process_g4_hits``` must be passed, so that the Geant hits are stored in a hdf5 file:
 
