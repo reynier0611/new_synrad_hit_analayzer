@@ -15,7 +15,7 @@ import argparse
 # Class to analyze synrad hits
 # ------------------------------------------------------------------------------------------------
 class hits_from_synrad:
-    def __init__(self,nevents,int_window=100.e-09,path_to_photons=None,path_to_hits=None,preprocess_g4_hits=True):
+    def __init__(self,nevents,int_window=100.e-09,gold_thick=5.0,path_to_photons=None,path_to_hits=None,preprocess_g4_hits=True):
         if path_to_photons==None or path_to_hits==None:
             print("need both 'path_to_photons' and 'path_to_hits' arguments")
             exit()
@@ -30,13 +30,19 @@ class hits_from_synrad:
 
         self.nevents = nevents
         self.int_window = int_window
+        self.gold_thick = gold_thick
         self.path_to_photons = path_to_photons
-        self.path_to_hits = path_to_hits
-        self.dict_hdf5_fname = 'preprocessed_G4_hits_seeds_{}.h5'.format(self.number_seeded_geant_files)
+        self.total_time = (float)(self.nevents)*self.int_window
+        self.path_to_hits = os.path.join(path_to_hits,'gold_coating_{}um'.format((int)(self.gold_thick)))
+        self.dict_hdf5_fname = 'preprocessed_G4_hits/hits_gold_{}um_seeds_{}.h5'.format((int)(self.gold_thick),self.number_seeded_geant_files)
+        self.output_plots = 'output_plots'
+        self.common_outname = 'results_events_{}_int_window_{}_sec_gold_{}um_{}_seeded_G4_hits_'.format(nevents,
+        int_window,(int)(gold_thick),self.number_seeded_geant_files)
 
         print('')
         print('requested number of events:',self.nevents)
         print('time integration window:',self.int_window,'sec')
+        print('beampipe gold coating',self.gold_thick,'um')
         print('path to synrad photons:',self.path_to_photons)
         print('')
 
@@ -48,13 +54,18 @@ class hits_from_synrad:
         for i in range(n_entries):
             self.h1_df.SetBinContent(i+1,self.df_photons['NormFact'].iloc[i])
 
+        '''
         self.detectors = ["DRICHHits","EcalEndcapNHits","EcalEndcapPHits","VertexBarrelHits","SiBarrelHits","MPGDBarrelHits",
         "TrackerEndcapHits","MRICHHits","ZDC_PbSi_Hits","ZDC_WSi_Hits","ZDCHcalHits","TaggerTracker1Hits",
         "ForwardRomanPotHits","EcalBarrelHits","HcalEndcapPHits","HcalEndcapNHits","HcalEndcapPInsertHits",
         "HcalBarrelHits","B0PreshowerHits","B0TrackerHits","ForwardOffMTrackerHits","ZDC_SiliconPix_Hits",
         "ZDCEcalHits","TaggerCalorimeter1Hits","TaggerTracker2Hits","TaggerCalorimeter2Hits"]
+        '''
 
-        self.detectors = ["VertexBarrelHits","SiBarrelHits","TaggerTracker1Hits"]
+        # Reduced list
+        self.detectors = ["EcalEndcapNHits","EcalEndcapPHits","VertexBarrelHits","SiBarrelHits","MPGDBarrelHits",
+        "TrackerEndcapHits","TaggerTracker1Hits","EcalBarrelHits","HcalEndcapPHits","HcalEndcapNHits","HcalBarrelHits",
+        "TaggerCalorimeter1Hits","TaggerTracker2Hits","TaggerCalorimeter2Hits"]
 
         self.hits = {}
         for detector in self.detectors:
@@ -114,19 +125,38 @@ class hits_from_synrad:
         # Multiplicity plot
         plt.figure(figsize=(10,8))
         plt.hist(multiplicity)
-        plt.savefig('multiplicity.png',dpi=600)
+        fname = self.common_outname + 'multiplicity.png'
+        plt.savefig(os.path.join(self.output_plots,fname),dpi=600)
+        plt.close()
 
         # -----------------
         # Hit plots
         for detector in self.detectors:
             self.plot_x_y_z_distributions(detector)
 
+        # -----------------
+        # Summary plot
+        plt.figure(figsize=(15,8))
+        labels = []
+        num_hits = []
+        for detector in self.detectors:
+            labels.append(detector)
+            num_hits.append((float)(len(self.hits[detector]['x']))/self.total_time)
+        plt.bar(labels,num_hits)
+        plt.xticks(rotation = 90)
+        plt.yscale('log')
+        plt.tight_layout()
+        plt.ylabel('Hz')
+        fname = self.common_outname + 'summary.png'
+        plt.savefig(os.path.join(self.output_plots,fname),dpi=600)
+        plt.close()
+
     # --------------------------------------------
     def preprocess_hits(self):
         self.hit_container = {}
         for facet in self.facets:
             self.hit_container[facet] = {}
-            for seed in range(1,self.number_seeded_geant_files):
+            for seed in range(1,self.number_seeded_geant_files+1):
                 self.hit_container[facet][(str)(seed)] = {}
 
                 fname = os.path.join(self.path_to_hits,'geant_out_{}_seed_{}.edm4hep.root'.format(facet,seed))
@@ -183,7 +213,7 @@ class hits_from_synrad:
 
         fig = plt.figure(figsize=(10,5))
         plt.subplot(1,2,1)
-        plt.scatter(x,y)
+        plt.scatter(x,y,s=10,alpha=0.3)
         plt.title(detector+' integration window = {} sec'.format(self.int_window))
         plt.xlabel('$x$ [mm]')
         plt.ylabel('$y$ [mm]')
@@ -191,14 +221,15 @@ class hits_from_synrad:
         self.circles(detector)
 
         plt.subplot(1,2,2)
-        plt.scatter(z,x)
+        plt.scatter(z,x,s=10,alpha=0.3)
         plt.xlabel('$z$ [mm]')
         plt.ylabel('$x$ [mm]')
 
         self.lines(detector)
 
         plt.tight_layout()
-        plt.savefig('output_plots/results_xyz_hits_'+detector+'.png',dpi=600)
+        fname = self.common_outname + 'results_xyz_hits_' + detector + '.png'
+        plt.savefig(os.path.join(self.output_plots,fname),dpi=600)
         plt.close()
 
     # --------------------------------------------
@@ -249,6 +280,8 @@ if __name__ == '__main__':
                         help='number of events')
     parser.add_argument('--int_window', action='store', type=float, default=100.e-09,
                         help='time integration window in seconds. Default = 100.e-09')
+    parser.add_argument('--gold_thick', action='store', type=float, default=5.0,
+                        help='thickness of beampipe gold coating in um')
     args = parser.parse_args()
 
     print('******************************************************')
@@ -256,9 +289,15 @@ if __name__ == '__main__':
     print('******************************************************')
     path_to_photons = './'
     path_to_hits = 'geant_data/'
-    hits = hits_from_synrad(args.nevents,args.int_window,path_to_photons,path_to_hits,args.process_g4_hits)
+    hits = hits_from_synrad(args.nevents,args.int_window,args.gold_thick,path_to_photons,path_to_hits,args.process_g4_hits)
     if args.analyze:
         hits.generate()
 
     print()
     print('Overall running time:',np.round((time.time()-t0)/60.,2),'min')
+
+    '''
+    Notes:
+    -  10,000 events ->  2.44 min
+    - 100,000 events -> 15.56 min
+    '''
