@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import time
 from silx.io.dictdump import dicttoh5, h5todict
 import argparse
+import helper
 
 # ------------------------------------------------------------------------------------------------
 # Class to analyze synrad hits
@@ -22,7 +23,7 @@ class hits_from_synrad:
 
         # -----------------
         # Some parameters that may need modification down the line
-        self.number_seeded_geant_files = 25
+        self.number_seeded_geant_files = 50
         self.facets = ['25098','25113','25119','25099','25114','25120','25100',
         '25115','25130','25101','25116','25131','25111','25117','25132','25112',
         '25118','25133']
@@ -72,6 +73,8 @@ class hits_from_synrad:
             self.hits[detector] = {}
             for var in ['x','y','z']:
                 self.hits[detector][var] = []
+
+        helper.create_directories(self.detectors)
 
         if preprocess_g4_hits:
             print('Will look for geant files in:',self.path_to_hits)
@@ -134,14 +137,29 @@ class hits_from_synrad:
         for detector in self.detectors:
             self.plot_x_y_z_distributions(detector)
 
+        self.plot_x_y_z_distributions_combined(extra_label = '0_')
+
+        exclusion_list = ['TaggerTracker1Hits','TaggerTracker2Hits','TaggerCalorimeter1Hits','TaggerCalorimeter2Hits']
+        self.plot_x_y_z_distributions_combined(exclusion_list,extra_label = '1_')
+
+        exclusion_list = ['TaggerTracker1Hits','TaggerTracker2Hits','TaggerCalorimeter1Hits','TaggerCalorimeter2Hits',
+        'HcalEndcapNHits','EcalBarrelHits','HcalBarrelHits','EcalEndcapNHits','EcalEndcapPHits','HcalEndcapPHits']
+        self.plot_x_y_z_distributions_combined(exclusion_list,extra_label = '2_')
+
         # -----------------
         # Summary plot
+        fname_sum = self.common_outname + 'summary.txt'
+        f_summary = open(os.path.join('processed_data',fname_sum),'w')
+        f_summary.write('detector,rate_Hz\n')
+
         plt.figure(figsize=(15,8))
         labels = []
         num_hits = []
         for detector in self.detectors:
             labels.append(detector)
-            num_hits.append((float)(len(self.hits[detector]['x']))/self.total_time)
+            rate = (float)(len(self.hits[detector]['x']))/self.total_time
+            num_hits.append(rate)
+            f_summary.write(detector+',{}\n'.format(rate))
         plt.bar(labels,num_hits)
         plt.xticks(rotation = 90)
         plt.yscale('log')
@@ -150,6 +168,8 @@ class hits_from_synrad:
         fname = self.common_outname + 'summary.png'
         plt.savefig(os.path.join(self.output_plots,fname),dpi=600)
         plt.close()
+
+        f_summary.close()
 
     # --------------------------------------------
     def preprocess_hits(self):
@@ -213,22 +233,58 @@ class hits_from_synrad:
 
         fig = plt.figure(figsize=(10,5))
         plt.subplot(1,2,1)
-        plt.scatter(x,y,s=10,alpha=0.3)
-        plt.title(detector+' integration window = {} sec'.format(self.int_window))
+        plt.scatter(x,y,s=8,alpha=0.3)
+        plt.title(detector+' int window = {} sec, n events = {}'.format(self.int_window,self.nevents))
         plt.xlabel('$x$ [mm]')
         plt.ylabel('$y$ [mm]')
 
         self.circles(detector)
 
         plt.subplot(1,2,2)
-        plt.scatter(z,x,s=10,alpha=0.3)
+        plt.scatter(z,x,s=8,alpha=0.3)
+        plt.title('gold coating = {} um'.format(self.gold_thick))
         plt.xlabel('$z$ [mm]')
         plt.ylabel('$x$ [mm]')
 
         self.lines(detector)
 
         plt.tight_layout()
-        fname = self.common_outname + 'results_xyz_hits_' + detector + '.png'
+        fname = os.path.join(detector,self.common_outname + 'results_xyz_hits_' + detector + '.png')
+        plt.savefig(os.path.join(self.output_plots,fname),dpi=600)
+        plt.close()
+
+    # --------------------------------------------
+    def plot_x_y_z_distributions_combined(self,exclusion_list=[],extra_label=''):
+    
+        fig = plt.figure(figsize=(10,5))
+
+        plt.subplot(1,2,1)
+        for detector in self.detectors:
+            if detector in exclusion_list:
+                continue
+            x = self.hits[detector]['x']
+            y = self.hits[detector]['y']
+            plt.scatter(x,y,s=4,alpha=0.3,label=detector)
+        
+        plt.title(detector+' int window = {} sec, n events = {}'.format(self.int_window,self.nevents))
+        plt.xlabel('$x$ [mm]')
+        plt.ylabel('$y$ [mm]')
+        
+        plt.subplot(1,2,2)
+        for detector in self.detectors:
+            if detector in exclusion_list:
+                continue
+            x = self.hits[detector]['x']
+            z = self.hits[detector]['z']
+            plt.scatter(z,x,s=4,alpha=0.3,label=detector)
+
+        plt.title('gold coating = {} um'.format(self.gold_thick))
+        plt.xlabel('$z$ [mm]')
+        plt.ylabel('$x$ [mm]')
+        plt.legend(ncol=2)
+
+        plt.tight_layout()
+        fname = self.common_outname + extra_label + 'results_xyz_hits.png'
         plt.savefig(os.path.join(self.output_plots,fname),dpi=600)
         plt.close()
 
